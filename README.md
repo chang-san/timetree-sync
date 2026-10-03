@@ -21,3 +21,18 @@ TimeTree(家族)の予定を Google カレンダーへ一方向コピーする�
 - 同期で作った予定にだけ目印(extendedProperty)を付けており、**その目印付きだけ**を更新・削除する。同じGoogleカレンダーに手で入れた予定は触らない(ただし専用カレンダー推奨)。
 - 終日予定の終了日、繰り返し予定(RRULE/EXDATE)の扱いは初回実行時に実際の予定で確認すること。
 - 未検証: この環境からTimeTreeに接続できないため、実機テストはまだ。
+
+## GitHub Actions で自動デプロイ
+
+`main` に push すると `clasp push` でGASへ反映される(`.github/workflows/deploy.yml`)。
+
+1. https://script.google.com/home/usersettings で **Google Apps Script API** をオンにする
+2. ローカルで一度 `npx @google/clasp@3 login` を実行(ブラウザでGoogle認証) → `~/.clasprc.json` ができる
+3. GASプロジェクトの「プロジェクトの設定」から **スクリプトID** をコピー
+4. GitHubリポジトリの Settings → Secrets and variables → Actions に登録
+   - `CLASPRC_JSON` : `~/.clasprc.json` の中身まるごと
+   - `GAS_SCRIPT_ID` : 手順3のスクリプトID
+5. 以降は `main` へのpushで自動反映(Actions タブから手動実行も可)
+
+反映されないもの: スクリプトプロパティ(メール/パスワード等)とトリガー。ここは初回に手動で設定する(`installTrigger` を1回実行)。
+`CLASPRC_JSON` はGoogleアカウントの権限を持つので、リポジトリはprivateのままにし、他人に見せないこと。

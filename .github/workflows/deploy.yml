@@ -1,0 +1,25 @@
+name: Deploy to Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths: ['Code.gs', 'appsscript.json', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+        run: |
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"."}' "$GAS_SCRIPT_ID" > .clasp.json
+      - name: Push
+        run: npx --yes @google/clasp@3 push --force

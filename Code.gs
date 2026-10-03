@@ -40,30 +40,54 @@ function sync() {
 
   const seen = {};
   let created = 0, updated = 0, removed = 0;
+  const deadline = Date.now() + 5 * 60 * 1000; // GASは1回6分まで。超えそうなら止めて次回に続きをやる
+  let timedOut = false;
 
-  events.forEach(function (e) {
-    if (e.deleted_at) return;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (e.deleted_at) continue;
+    if (Date.now() > deadline) { timedOut = true; break; }
     const body = toGoogleEvent_(e);
     seen[e.id] = true;
     const cur = existing[e.id];
     if (!cur) {
-      Calendar.Events.insert(body, gcal);
+      withRetry_(function () { return Calendar.Events.insert(body, gcal); });
       created++;
     } else if (changed_(cur, body)) {
-      Calendar.Events.patch(body, gcal, cur.id);
+      withRetry_(function () { return Calendar.Events.patch(body, gcal, cur.id); });
       updated++;
     }
-  });
+  }
 
-  // TimeTree 側で消えたものはGoogle側も消す(同期で作ったものだけ)
-  Object.keys(existing).forEach(function (ttId) {
-    if (!seen[ttId]) {
-      Calendar.Events.remove(gcal, existing[ttId].id);
-      removed++;
-    }
-  });
+  // TimeTree 側で消えたものはGoogle側も消す(同期で作ったものだけ)。途中で止めた回は誤削除を避けるためスキップ
+  if (!timedOut) {
+    Object.keys(existing).forEach(function (ttId) {
+      if (!seen[ttId]) {
+        withRetry_(function () { return Calendar.Events.remove(gcal, existing[ttId].id); });
+        removed++;
+      }
+    });
+  } else {
+    console.log('時間切れのため途中で停止。次回の実行で続きから同期します');
+  }
 
   console.log('created=' + created + ' updated=' + updated + ' removed=' + removed + ' total=' + events.length);
+}
+
+/** 書き込み回数制限(Rate Limit等)に当たったら間隔を空けて再試行する。成功時も少し待って連打を避ける */
+function withRetry_(fn) {
+  let wait = 1000;
+  for (let i = 0; i < 6; i++) {
+    try {
+      const r = fn();
+      Utilities.sleep(300);
+      return r;
+    } catch (err) {
+      if (!/rate limit|quota|backend error|try again/i.test(String(err)) || i === 5) throw err;
+      Utilities.sleep(wait);
+      wait *= 2;
+    }
+  }
 }
 
 /** 15分ごとの定期実行を設定する(1回だけ実行すればOK) */
